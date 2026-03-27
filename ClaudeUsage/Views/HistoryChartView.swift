@@ -50,6 +50,13 @@ struct HistoryChartView: View {
                     .frame(height: 80)
             } else {
                 Chart {
+                    // Invisible anchor at range start so X axis always spans the full selected period
+                    PointMark(
+                        x: .value("Time", Date().addingTimeInterval(-selectedRange.lookback)),
+                        y: .value("Utilization", 0)
+                    )
+                    .opacity(0)
+
                     ForEach(filteredSnapshots) { snap in
                         LineMark(
                             x: .value("Time", snap.timestamp),

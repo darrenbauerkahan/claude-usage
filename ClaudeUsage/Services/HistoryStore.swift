@@ -21,6 +21,7 @@ final class HistoryStore: ObservableObject {
 
     private let fileURL: URL
     private static let retentionDays: Double = 8
+    private var hasSetPermissions = false
 
     private init() {
         let appSupport = FileManager.default.urls(
@@ -35,7 +36,15 @@ final class HistoryStore: ObservableObject {
     }
 
     /// Saves a new snapshot and prunes entries older than 8 days.
+    /// Skips saving if values are unchanged from the last snapshot.
     func saveSnapshot(session: Int, weekly: Int) {
+        // Deduplicate: skip if values unchanged from last snapshot
+        if let last = snapshots.last,
+           last.sessionUtilization == session,
+           last.weeklyUtilization == weekly {
+            return
+        }
+
         let snapshot = HistorySnapshot(
             id: UUID(),
             timestamp: Date(),
@@ -69,7 +78,16 @@ final class HistoryStore: ObservableObject {
     private func persist() {
         do {
             let data = try JSONEncoder().encode(snapshots)
+            let isNewFile = !FileManager.default.fileExists(atPath: fileURL.path)
             try data.write(to: fileURL, options: .atomic)
+            // Only set permissions on first write; atomic write preserves them after
+            if isNewFile || !hasSetPermissions {
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: fileURL.path
+                )
+                hasSetPermissions = true
+            }
         } catch {
             logger.error("Failed to persist history: \(error.localizedDescription)")
         }
