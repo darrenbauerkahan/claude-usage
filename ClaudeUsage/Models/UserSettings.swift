@@ -4,19 +4,17 @@ import Combine
 import AppKit
 
 enum RefreshInterval: Int, CaseIterable, Sendable {
-    case thirtySeconds = 30
-    case oneMinute = 60
     case twoMinutes = 120
     case threeMinutes = 180
     case fiveMinutes = 300
+    case tenMinutes = 600
 
     var label: String {
         switch self {
-        case .thirtySeconds: return "30 sec"
-        case .oneMinute: return "1 min"
         case .twoMinutes: return "2 min"
         case .threeMinutes: return "3 min"
         case .fiveMinutes: return "5 min"
+        case .tenMinutes: return "10 min"
         }
     }
 
@@ -75,7 +73,7 @@ final class UserSettings: ObservableObject, @unchecked Sendable {
     }
 
     var refreshInterval: RefreshInterval {
-        get { RefreshInterval(rawValue: refreshIntervalRaw) ?? .twoMinutes }
+        get { RefreshInterval(rawValue: refreshIntervalRaw) ?? .fiveMinutes }
         set { refreshIntervalRaw = newValue.rawValue }
     }
 
@@ -86,13 +84,25 @@ final class UserSettings: ObservableObject, @unchecked Sendable {
 
     private init() {
         let storedInterval = defaults.integer(forKey: refreshIntervalKey)
+        let needsMigration: Bool
         if storedInterval == 0 {
+            self.refreshIntervalRaw = RefreshInterval.fiveMinutes.rawValue
+            needsMigration = false
+        } else if storedInterval == 30 || storedInterval == 60 {
+            // Migrate removed 30s/1min intervals to 2min
             self.refreshIntervalRaw = RefreshInterval.twoMinutes.rawValue
+            needsMigration = true
         } else {
             self.refreshIntervalRaw = storedInterval
+            needsMigration = false
         }
 
         let storedSound = defaults.string(forKey: resetSoundKey)
         self.resetSoundRaw = storedSound ?? ResetSound.none.rawValue
+
+        // Persist migration after all stored properties are initialized
+        if needsMigration {
+            defaults.set(refreshIntervalRaw, forKey: refreshIntervalKey)
+        }
     }
 }

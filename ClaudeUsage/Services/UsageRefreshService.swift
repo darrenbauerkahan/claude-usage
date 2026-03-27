@@ -29,6 +29,12 @@ final class UsageRefreshService: ObservableObject, UsageRefreshServiceProtocol {
     @Published private(set) var lastError: String?
     @Published private(set) var secondsUntilNextRefresh: Int = 0
 
+    /// Whether the popover is currently visible; controls countdown timer lifecycle
+    private(set) var isPopoverVisible: Bool = false
+
+    /// Whether a reset countdown is active (at-limit state), so popoverDidShow can restore it
+    private var isResetCountdownActive: Bool = false
+
     private let apiClient: ClaudeAPIClientProtocol
     private let authService: AuthenticationServiceProtocol
     private let settings: UserSettings
@@ -216,10 +222,12 @@ final class UsageRefreshService: ObservableObject, UsageRefreshServiceProtocol {
                 self.startAutoRefresh()
             }
         }
+        resumeRefreshTimer?.tolerance = 5
     }
 
     func startAutoRefresh() {
         stopAutoRefresh()
+        isResetCountdownActive = false
 
         if let summary = usageSummary, summary.isPrimaryAtLimit {
             logger.info("Primary usage at limit, not starting auto-refresh")
@@ -237,21 +245,19 @@ final class UsageRefreshService: ObservableObject, UsageRefreshServiceProtocol {
                 await self?.refreshNow()
             }
         }
+        refreshTimer?.tolerance = interval * 0.1
 
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateCountdown()
-            }
-        }
+        // Only run the countdown timer when popover is visible
+        startCountdownTimerIfNeeded()
     }
 
     func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        stopCountdownTimer()
         nextRefreshDate = nil
         secondsUntilNextRefresh = 0
+        isResetCountdownActive = false
     }
 
     private func stopAllTimers() {
@@ -260,34 +266,73 @@ final class UsageRefreshService: ObservableObject, UsageRefreshServiceProtocol {
         resumeRefreshTimer = nil
     }
 
-    /// Starts a 60-second countdown timer targeting the reset time, aligned to system clock
-    /// minute boundaries. This keeps the UI updated (menubar + popover) while auto-refresh is paused.
+    // MARK: - Popover Visibility
+
+    /// Call when the popover becomes visible to start the countdown timer.
+    func popoverDidShow() {
+        isPopoverVisible = true
+        updateCountdown()
+        startCountdownTimerIfNeeded()
+    }
+
+    /// Call when the popover closes to stop the countdown timer.
+    func popoverDidHide() {
+        isPopoverVisible = false
+        stopCountdownTimer()
+    }
+
+    private func startCountdownTimerIfNeeded() {
+        guard isPopoverVisible else { return }
+        stopCountdownTimer()
+
+        if isResetCountdownActive {
+            // Reset countdown: 60s aligned to clock
+            let secondsIntoMinute = Calendar.current.component(.second, from: Date())
+            let delayToNextMinute = TimeInterval(60 - secondsIntoMinute)
+
+            countdownTimer = Timer.scheduledTimer(withTimeInterval: delayToNextMinute, repeats: false) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self, self.nextRefreshDate != nil else { return }
+                    self.updateCountdown()
+
+                    self.countdownTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            guard let self = self, self.nextRefreshDate != nil else { return }
+                            self.updateCountdown()
+                        }
+                    }
+                    self.countdownTimer?.tolerance = 5
+                }
+            }
+            countdownTimer?.tolerance = 1
+        } else if nextRefreshDate != nil {
+            // Normal auto-refresh countdown: 1s
+            countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.updateCountdown()
+                }
+            }
+            countdownTimer?.tolerance = 0.5
+        }
+    }
+
+    private func stopCountdownTimer() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+    }
+
+    /// Sets up reset countdown state and starts the countdown timer if the popover is visible.
     private func startResetCountdown(resetsAt: Date?) {
         guard let resetsAt = resetsAt else { return }
 
-        countdownTimer?.invalidate()
+        stopCountdownTimer()
+        isResetCountdownActive = true
 
         nextRefreshDate = resetsAt
         updateCountdown()
 
-        // Align first tick to next minute boundary (e.g., 14:23:45 → fires at 14:24:00)
-        let secondsIntoMinute = Calendar.current.component(.second, from: Date())
-        let delayToNextMinute = TimeInterval(60 - secondsIntoMinute)
-
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: delayToNextMinute, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self, self.nextRefreshDate != nil else { return }
-                self.updateCountdown()
-
-                // Continue with repeating 60s timer aligned to clock
-                self.countdownTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self = self, self.nextRefreshDate != nil else { return }
-                        self.updateCountdown()
-                    }
-                }
-            }
-        }
+        // Only run the visual countdown timer when popover is visible
+        startCountdownTimerIfNeeded()
     }
 
     private func updateCountdown() {

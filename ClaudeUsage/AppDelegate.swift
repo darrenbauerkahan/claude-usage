@@ -4,7 +4,7 @@ import Combine
 
 /// Custom AppDelegate to manage NSStatusItem for multi-line menubar display
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, ObservableObject {
     static private(set) var shared: AppDelegate!
 
     private var statusItem: NSStatusItem?
@@ -30,7 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         setupStatusItem()
         setupPopover()
-        setupEventMonitor()
         observeViewModelChanges()
     }
 
@@ -51,14 +50,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         popover?.contentSize = NSSize(width: Constants.UI.menuBarWidth, height: 700)
         popover?.behavior = .transient
         popover?.animates = true
+        popover?.delegate = self
     }
 
-    private func setupEventMonitor() {
+    private func installEventMonitor() {
+        guard eventMonitor == nil else { return }
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             if self?.popover?.isShown == true {
                 self?.popover?.performClose(nil)
             }
         }
+    }
+
+    private func removeEventMonitor() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        removeEventMonitor()
+        viewModel.refreshService.popoverDidHide()
     }
 
     private func observeViewModelChanges() {
@@ -123,10 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         if let popover = popover, popover.isShown {
             popover.performClose(nil)
         } else {
+            viewModel.refreshService.popoverDidShow()
             let contentView = MenuBarView().environmentObject(viewModel)
             popover?.contentViewController = NSHostingController(rootView: contentView)
             popover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover?.contentViewController?.view.window?.makeKey()
+            installEventMonitor()
         }
     }
 
