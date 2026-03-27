@@ -112,7 +112,8 @@ struct LoginWebView: NSViewRepresentable {
         }
 
         private func checkLoginStatus(webView: WKWebView, url: URL) {
-            logger.debug("URL changed to: \(url.absoluteString)")
+            // Log host and path only — query/fragment may contain OAuth tokens
+            logger.debug("URL changed to: \(url.host ?? "")\(url.path)")
 
             // Only proceed if in idle state and logged in
             guard case .idle = extractionState, isLoggedIn(url) else { return }

@@ -58,6 +58,7 @@ SWIFT_FILES=$(find "$SOURCE_DIR" -name "*.swift" -type f)
 # not available in CLI builds). Top-level #Preview blocks always close with `}` at
 # column 0, so awk can detect the boundary without full parsing.
 PREPROCESSED_DIR=$(mktemp -d)
+trap "rm -rf $PREPROCESSED_DIR" EXIT
 for swift_file in $SWIFT_FILES; do
     rel_path="${swift_file#$SOURCE_DIR/}"
     dest="$PREPROCESSED_DIR/$rel_path"
@@ -135,7 +136,7 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 # For distribution, use a proper Apple Developer certificate.
 
 echo "🔏 Signing app bundle..."
-codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --force --deep --sign - --entitlements "$SOURCE_DIR/ClaudeUsage.entitlements" "$APP_BUNDLE"
 
 # ============================================================================
 # Done

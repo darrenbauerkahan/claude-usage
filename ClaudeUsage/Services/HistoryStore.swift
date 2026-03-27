@@ -70,6 +70,11 @@ final class HistoryStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(snapshots)
             try data.write(to: fileURL, options: .atomic)
+            // Restrict to owner-only read/write (0600) — usage patterns are private
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: fileURL.path
+            )
         } catch {
             logger.error("Failed to persist history: \(error.localizedDescription)")
         }
