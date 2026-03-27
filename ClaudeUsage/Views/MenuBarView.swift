@@ -153,6 +153,9 @@ struct MenuBarView: View {
             // Extra Usage section
             extraUsageSectionView
 
+            // Usage history chart
+            HistoryChartView()
+
             // Error message
             if let error = viewModel.lastError {
                 HStack(spacing: 4) {

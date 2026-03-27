@@ -54,6 +54,18 @@ mkdir -p "$BUILD_DIR"
 
 SWIFT_FILES=$(find "$SOURCE_DIR" -name "*.swift" -type f)
 
+# Preprocess: strip #Preview macro blocks (require Xcode's PreviewsMacros plugin,
+# not available in CLI builds). Top-level #Preview blocks always close with `}` at
+# column 0, so awk can detect the boundary without full parsing.
+PREPROCESSED_DIR=$(mktemp -d)
+for swift_file in $SWIFT_FILES; do
+    rel_path="${swift_file#$SOURCE_DIR/}"
+    dest="$PREPROCESSED_DIR/$rel_path"
+    mkdir -p "$(dirname "$dest")"
+    awk '/^#Preview\(/{skip=1; next} skip && /^[}]/{skip=0; next} !skip' "$swift_file" > "$dest"
+done
+SWIFT_FILES=$(find "$PREPROCESSED_DIR" -name "*.swift" -type f)
+
 echo "📝 Compiling Swift files..."
 
 # Compile with swiftc
@@ -70,6 +82,7 @@ swiftc \
     -framework Security \
     -framework Combine \
     -framework AppKit \
+    -framework Charts \
     -parse-as-library \
     $SWIFT_FILES
 

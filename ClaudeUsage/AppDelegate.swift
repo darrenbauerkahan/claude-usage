@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover?.contentSize = NSSize(width: Constants.UI.menuBarWidth, height: 500)
+        popover?.contentSize = NSSize(width: Constants.UI.menuBarWidth, height: 700)
         popover?.behavior = .transient
         popover?.animates = true
     }
@@ -186,19 +186,26 @@ struct StatusBarContentView: View {
 
             if viewModel.authState.isAuthenticated {
                 if let summary = viewModel.usageSummary, let primary = summary.primaryItem {
+                    let weeklyItem = summary.items.first { $0.key == "seven_day" }
                     VStack(alignment: .leading, spacing: -3) {
-                        // Percentage with status indicator
+                        // Both percentages with status indicator
                         HStack(alignment: .center, spacing: 3) {
-                            Text("\(primary.utilization)%")
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .fixedSize()
+                            if let weekly = weeklyItem {
+                                Text("\(primary.utilization)% | \(weekly.utilization)%")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .fixedSize()
+                            } else {
+                                Text("\(primary.utilization)%")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .fixedSize()
+                            }
 
                             Circle()
                                 .fill(viewModel.statusColor)
                                 .frame(width: 6, height: 6)
                         }
 
-                        // Show remaining time, fallback to "5h" when resetting
+                        // Show 5-hour reset time, fallback to "5h" when resetting
                         Text(primary.resetTimeRemaining ?? Self.defaultRemaining)
                             .font(.system(size: 8, weight: .regular, design: .rounded))
                             .opacity(0.8)

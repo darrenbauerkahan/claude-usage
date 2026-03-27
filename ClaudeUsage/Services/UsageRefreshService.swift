@@ -369,6 +369,15 @@ final class UsageRefreshService: ObservableObject, UsageRefreshServiceProtocol {
             self.processedResetTimes.removeAll()
             saveCache(summary)
 
+            // Persist history snapshot when both five_hour and seven_day are present
+            if let sessionItem = summary.items.first(where: { $0.key == "five_hour" }),
+               let weeklyItem = summary.items.first(where: { $0.key == "seven_day" }) {
+                HistoryStore.shared.saveSnapshot(
+                    session: sessionItem.utilization,
+                    weekly: weeklyItem.utilization
+                )
+            }
+
             if summary.isPrimaryAtLimit {
                 logger.info("Primary usage at limit, pausing auto-refresh")
                 stopAutoRefresh()
